@@ -2,24 +2,26 @@ import React, { useEffect } from "react";
 import { Modal, Form, Input, message } from "antd";
 import { Customer } from "@/interface/InterfaceCustomer";
 
-interface UserUpdateFormProps {
+type UserFormProps = {
   visible: boolean;
   onCancel: () => void;
-  onUpdateSuccess: (updatedUser: Customer) => void; // <-- nhận tham số ở đây
-  user: Customer | null;
-}
+  user?: Customer | null; // nếu có => update, không có => tạo mới
+  onSubmit: (values: Customer) => void;
+};
 
-const UserUpdateForm: React.FC<UserUpdateFormProps> = ({
+const UserUpdateForm: React.FC<UserFormProps> = ({
   visible,
   onCancel,
-  onUpdateSuccess,
   user,
+  onSubmit,
 }) => {
   const [form] = Form.useForm();
 
   useEffect(() => {
     if (user) {
       form.setFieldsValue(user);
+    } else {
+      form.resetFields();
     }
   }, [user, form]);
 
@@ -27,39 +29,29 @@ const UserUpdateForm: React.FC<UserUpdateFormProps> = ({
     try {
       const values = await form.validateFields();
 
-      const response = await fetch(
-        `http://localhost:8000/api/v1/user/${user?.id}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(values),
-        }
-      );
+      // Nếu đang update, merge với user hiện tại, còn tạo mới thì chỉ lấy values
+      const submitValues: Customer = user
+        ? { ...user, ...values }
+        : (values as Customer);
 
-      const result = await response.json();
-
-      if (result.statusCode === 200) {
-        message.success("Cập nhật người dùng thành công!");
-        onUpdateSuccess(result?.data);
-        onCancel();
-      } else {
-        message.error(result.message || "Cập nhật thất bại");
+      if (onSubmit) {
+        await onSubmit(submitValues);
+        form.resetFields();
       }
     } catch (error) {
-      console.error(error);
-      message.error("Đã có lỗi xảy ra khi cập nhật");
+      message.error(
+        user ? "Có lỗi xảy ra khi cập nhật" : "Có lỗi xảy ra khi tạo mới"
+      );
     }
   };
 
   return (
     <Modal
-      visible={visible}
-      title="Cập nhật thông tin người dùng"
+      open={visible}
+      title={user ? "Cập nhật thông tin người dùng" : "Thêm người dùng mới"}
       onCancel={onCancel}
       onOk={handleSubmit}
-      okText="Lưu"
+      okText={user ? "Lưu" : "Tạo mới"}
       cancelText="Hủy"
     >
       <Form form={form} layout="vertical">

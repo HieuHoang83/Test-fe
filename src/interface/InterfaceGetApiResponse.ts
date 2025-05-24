@@ -1,6 +1,6 @@
 import { Customer } from "./InterfaceCustomer";
 
-export interface GetApiResponse {
+export interface GetCustomerResponse {
   statusCode: number;
   message: string;
   data: {
