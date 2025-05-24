@@ -3,7 +3,10 @@ import styles from "./UserPage.module.scss";
 import CustomerTable from "@/Component/Customer/TableCustomer/CustomerTable";
 
 const cx = classNames.bind(styles);
-
+export const metadata = {
+  title: "Customer",
+  description: "Quản lý khách hàng",
+};
 export default function UserPage() {
   return (
     <>

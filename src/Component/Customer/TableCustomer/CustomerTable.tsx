@@ -1,157 +1,150 @@
 "use client";
-import React, { useEffect, useState } from "react";
+
+import React, { useState } from "react";
+import useSWR from "swr";
 import { Table, message, Pagination, Spin, Modal, Form, Input } from "antd";
 import type { ColumnsType } from "antd/es/table";
-
 import { Customer } from "@/interface/InterfaceCustomer";
-
+import { GetCustomerResponse } from "@/interface/InterfaceGetApiResponse";
+import { ActionButton } from "../../Button/ButtonAction/ActionButton";
+import UserUpdateForm from "../Userform/UserForm";
+import ContactLink from "../../Button/ContactLink/LinkButton";
 import classNames from "classnames/bind";
 import styles from "./CustomerTable.module.scss";
-import { GetCustomerResponse } from "@/interface/InterfaceGetApiResponse";
-import ContactLink from "@/Component/Button/ContactLink/LinkButton";
-import { ActionButton } from "@/Component/Button/ButtonAction/ActionButton";
-import UserUpdateForm from "../Userform/UserForm";
+import { base64UrlEncode } from "@/Base64/Encode";
+
 const cx = classNames.bind(styles);
 
-const LoadingTab = () => {
-  return (
-    <div className={cx("loadingWrapper")}>
-      <Spin spinning={true} size="large" />
-    </div>
-  );
+const fetcher = async (url: string) => {
+  const res = await fetch(url);
+  if (!res.ok) {
+    const errorData = await res.json();
+    throw new Error(errorData.message || "Fetch error");
+  }
+  return res.json();
 };
 
 export default function CustomerTable() {
   const [form] = Form.useForm();
-  const [selectedUser, setSelectedUser] = useState<Customer | null>(null);
   const [searchText, setSearchText] = useState("");
-  const [data, setData] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalItems, setTotalItems] = useState(0);
-  const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
-  const [isUpdateModalVisible, setIsUpdateModalVisible] = useState(false);
+  const [modalMode, setModalMode] = useState<"create" | "update" | null>(null);
+  const [selectedUser, setSelectedUser] = useState<Customer | null>(null);
 
-  const fetchCustomers = async (page = 1, search = "") => {
-    setLoading(true);
-    try {
-      const baseUrl = search
-        ? `http://localhost:8000/api/v1/user/search?query=${search}&page=${page}&limit=6`
-        : `http://localhost:8000/api/v1/user?page=${page}&limit=6`;
+  // Build API URL dynamically depending on search & page
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL;
 
-      const res = await fetch(baseUrl);
-      const json: GetCustomerResponse = await res.json();
-      console.log(json);
-      if (json.statusCode === 200) {
-        setData(json.data.customers);
-        setCurrentPage(json.data.currentPage);
-        setTotalItems(json.data.totalItems);
-      } else {
-        message.error(json.message || "Lỗi khi tải dữ liệu khách hàng");
-      }
-    } catch {
-      message.error("Lỗi kết nối API");
-    } finally {
-      setLoading(false);
+  const apiUrl = searchText
+    ? `${baseUrl}/user/search?query=${encodeURIComponent(
+        searchText
+      )}&page=${currentPage}&limit=6`
+    : `${baseUrl}/user?page=${currentPage}&limit=6`;
+
+  const { data, error, isValidating, mutate } = useSWR<GetCustomerResponse>(
+    apiUrl,
+    fetcher,
+    {
+      revalidateOnFocus: true, // Không tự động fetch lại khi tab focus
+      refreshInterval: 10000, // Tự động fetch lại mỗi 10 giây
+      dedupingInterval: 5000, // Nếu gọi API cùng url trong vòng 5 giây thì dùng cache, không gọi lại
     }
-  };
+  );
 
+  const loading = !data && !error;
+
+  const customers = data?.data.customers || [];
+  const totalItems = data?.data.totalItems || 0;
+  const currentApiPage = data?.data.currentPage || 1;
+
+  // Handle delete action, then revalidate data
   const handleDelete = async (id: string) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/user/${id}`, {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+
+      const res = await fetch(`${baseUrl}/user/${id}`, {
         method: "DELETE",
       });
-
       const result = await res.json();
-
-      if (!res.ok) {
-        throw new Error(result.message || "Xóa thất bại");
-      }
-      message.success("Xóa khách hàng thành công!");
-      fetchCustomers(currentPage);
+      if (!res.ok) throw new Error(result.message || "Xóa thất bại");
+      message.success("Xóa thành công!");
+      mutate(); // revalidate data after delete
     } catch (error: any) {
-      message.error(error.message || "Xóa thất bại");
-    }
-  };
-
-  const handleUpdateSuccess = (updatedUser: Customer) => {
-    setData((prevData) =>
-      prevData.map((user) =>
-        user.id === updatedUser.id ? { ...user, ...updatedUser } : user
-      )
-    );
-  };
-
-  const handleUserUpdate = async (values: Customer) => {
-    if (!selectedUser) return;
-
-    try {
-      const response = await fetch(
-        `http://localhost:8000/api/v1/user/${selectedUser.id}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(values),
-        }
-      );
-
-      const result = await response.json();
-
-      if (result.statusCode === 200) {
-        message.success("Cập nhật người dùng thành công!");
-        handleUpdateSuccess(result.data);
-        setIsUpdateModalVisible(false);
-      } else {
-        message.error(result.message || "Cập nhật thất bại");
-      }
-    } catch (error) {
-      message.error("Đã có lỗi xảy ra khi cập nhật");
-    }
-  };
-
-  const handleUserCreate = async (values: Customer) => {
-    try {
-      const response = await fetch("http://localhost:8000/api/v1/user", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(values),
-      });
-
-      const result = await response.json();
-      console.log(result);
-      if (result.statusCode === 201) {
-        message.success("Tạo người dùng thành công!");
-        setData((prev) => [result.data, ...prev]);
-        setIsCreateModalVisible(false);
-      } else {
-        message.error(result.message || "Tạo người dùng thất bại");
-      }
-    } catch (error) {
-      message.error("Đã có lỗi xảy ra khi tạo người dùng");
+      message.error(error.message);
     }
   };
 
   const handleSearch = (value: string) => {
     setSearchText(value);
     setCurrentPage(1);
-    fetchCustomers(1, value);
   };
 
-  useEffect(() => {
-    fetchCustomers(currentPage);
-  }, []);
-
-  const sharedHeaderCellProps = {
-    className: cx("headerCell"),
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
   };
 
-  const sharedCellProps = {
-    className: cx("cell"),
+  // Handle create or update user
+  const handleUserSubmit = async (values: Customer) => {
+    const isUpdate = modalMode === "update";
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+
+    const url = isUpdate
+      ? `${baseUrl}/user/${selectedUser?.id}`
+      : `${baseUrl}/user`;
+    const method = isUpdate ? "PUT" : "POST";
+
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(values),
+      });
+      const result = await res.json();
+
+      if (res.ok) {
+        message.success(
+          isUpdate ? "Cập nhật thành công!" : "Tạo người dùng thành công!"
+        );
+        setModalMode(null);
+        setSelectedUser(null);
+        mutate(); // revalidate data after update/create
+      } else {
+        message.error(result.message || "Thao tác thất bại");
+      }
+    } catch {
+      message.error("Đã có lỗi xảy ra");
+    }
   };
+
+  const renderActionButtons = (record: Customer) => (
+    <div className={cx("actionButtons")}>
+      <ActionButton
+        text="Chỉnh sửa"
+        color="#52c41a"
+        onClick={() => {
+          setSelectedUser(record);
+          form.setFieldsValue(record);
+          setModalMode("update");
+        }}
+      />
+      <ActionButton
+        text="Xóa"
+        color="#ff4d4f"
+        onClick={() =>
+          Modal.confirm({
+            title: "Xác nhận xóa",
+            content: "Bạn có chắc chắn muốn xóa khách hàng này?",
+            okText: "Xóa",
+            cancelText: "Hủy",
+            centered: true,
+            onOk: () => handleDelete(record.id),
+          })
+        }
+      />
+    </div>
+  );
+
+  const sharedCellProps = { className: cx("cell") };
+  const sharedHeaderCellProps = { className: cx("headerCell") };
 
   const columns: ColumnsType<Customer> = [
     {
@@ -191,119 +184,82 @@ export default function CustomerTable() {
       key: "contact",
       className: cx("col-contact"),
       render: (_, record) => (
-        <ContactLink href={`/contact/${record.id}`}>Liên hệ</ContactLink>
+        <ContactLink
+          href={`/contact/${base64UrlEncode(`${record.id}:${record.name}`)}`}
+        >
+          Liên hệ
+        </ContactLink>
       ),
-      onHeaderCell: () => ({
-        className: cx("headerCellaction"),
-      }),
-      onCell: () => ({
-        className: cx("centeredCell"),
-      }),
+      onHeaderCell: () => ({ className: cx("headerCellaction") }),
+      onCell: () => ({ className: cx("centeredCell") }),
     },
     {
       title: "Hành động",
       key: "action",
       className: cx("col-action"),
-      render: (_, record) => (
-        <div className={cx("actionButtons")}>
-          <ActionButton
-            text="Chỉnh sửa"
-            color="#52c41a"
-            onClick={() => {
-              setSelectedUser(record);
-              form.setFieldsValue(record);
-              setIsUpdateModalVisible(true);
-            }}
-          />
-          <ActionButton
-            text="Xóa"
-            color="#ff4d4f"
-            onClick={() => {
-              Modal.confirm({
-                title: "Xác nhận xóa",
-                content: "Bạn có chắc chắn muốn xóa khách hàng này?",
-                okText: "Xóa",
-                cancelText: "Hủy",
-                centered: true,
-                onOk: () => handleDelete(record.id),
-              });
-            }}
-          />
-        </div>
-      ),
-      onHeaderCell: () => ({
-        className: cx("headerCellaction"),
-      }),
+      render: (_, record) => renderActionButtons(record),
+      onHeaderCell: () => ({ className: cx("headerCellaction") }),
       onCell: () => sharedCellProps,
     },
   ];
-
-  const onPageChange = (page: number, pageSize?: number) => {
-    setCurrentPage(page);
-    fetchCustomers(page);
-  };
-
+  const LoadingTab = () => (
+    <div className={cx("loadingWrapper")}>
+      <Spin spinning size="large" />
+    </div>
+  );
   return (
     <div className={cx("wrapper")}>
-      <>
-        {loading ? (
-          <LoadingTab />
-        ) : (
-          <div className={cx("tableContainer")} style={{ maxWidth: "100%" }}>
-            <div className={cx("searchWrapper")}>
-              <button
-                onClick={() => setIsCreateModalVisible(true)}
-                className={cx("btnAddCustom")}
-              >
-                Thêm khách hàng
-              </button>
-              <Input.Search
-                placeholder="Tìm kiếm theo tên, email..."
-                allowClear
-                enterButton="Tìm"
-                size="middle"
-                style={{ width: 300 }}
-                onSearch={handleSearch}
-              />
-            </div>
-            <Table
-              className={cx("table")}
-              columns={columns}
-              dataSource={data}
-              rowKey="id"
-              pagination={false}
-              scroll={{ x: "max-content" }}
+      {loading || isValidating ? (
+        <LoadingTab />
+      ) : (
+        <div className={cx("tableContainer")}>
+          <div className={cx("searchWrapper")}>
+            <button
+              className={cx("btnAddCustom")}
+              onClick={() => setModalMode("create")}
+            >
+              Thêm khách hàng
+            </button>
+            <Input.Search
+              placeholder="Tìm kiếm theo tên, email..."
+              allowClear
+              enterButton="Tìm"
+              size="middle"
+              style={{ width: 300 }}
+              onSearch={handleSearch}
             />
-            <div className={cx("paginationWrapper")}>
-              <Pagination
-                current={currentPage}
-                pageSize={6}
-                total={totalItems}
-                showSizeChanger={false}
-                onChange={onPageChange}
-              />
-            </div>
           </div>
-        )}
 
-        <UserUpdateForm
-          visible={isCreateModalVisible}
-          onCancel={() => {
-            setIsCreateModalVisible(false);
-            setSelectedUser(null);
-          }}
-          onSubmit={handleUserCreate}
-        />
-        <UserUpdateForm
-          visible={isUpdateModalVisible}
-          onCancel={() => {
-            setIsUpdateModalVisible(false);
-            setSelectedUser(null);
-          }}
-          onSubmit={handleUserUpdate}
-          user={selectedUser}
-        />
-      </>
+          <Table
+            className={cx("table")}
+            columns={columns}
+            dataSource={customers}
+            rowKey="id"
+            pagination={false}
+            scroll={{ x: "max-content" }}
+          />
+
+          <div className={cx("paginationWrapper")}>
+            <Pagination
+              current={currentPage}
+              pageSize={6}
+              total={totalItems}
+              showSizeChanger={false}
+              onChange={handlePageChange}
+            />
+          </div>
+        </div>
+      )}
+
+      <UserUpdateForm
+        visible={modalMode !== null}
+        user={modalMode === "update" ? selectedUser : undefined}
+        onCancel={() => {
+          setModalMode(null);
+          setSelectedUser(null);
+        }}
+        onSubmit={handleUserSubmit}
+      />
     </div>
   );
 }

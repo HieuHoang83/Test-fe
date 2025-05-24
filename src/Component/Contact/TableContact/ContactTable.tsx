@@ -1,20 +1,23 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
-import { Table, message, Pagination, Spin, Modal, Form, Input } from "antd";
+import React, { useState } from "react";
+import useSWR from "swr";
+import { Table, message, Pagination, Spin, Modal, Form } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { Contact } from "@/interface/InterfaceContact";
 
 import classNames from "classnames/bind";
 import styles from "./ContactTable.module.scss";
-import ContactForm from "../ContactForm/ContactForm";
 import { ActionButton } from "@/Component/Button/ButtonAction/ActionButton";
+import ContactForm from "../ContactForm/ContactForm";
+
 const cx = classNames.bind(styles);
+
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 const LoadingTab = () => (
   <div className={cx("loadingWrapper")}>
-    {" "}
-    <Spin spinning size="large" />{" "}
+    <Spin spinning size="large" />
   </div>
 );
 
@@ -24,71 +27,63 @@ interface ContactTableProps {
 
 export default function ContactTable({ customerId }: ContactTableProps) {
   const [form] = Form.useForm();
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalItems, setTotalItems] = useState(0);
   const [modalMode, setModalMode] = useState<"create" | "update" | null>(null);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const fetchContacts = useCallback(
-    async (page = 1) => {
-      setLoading(true);
-      try {
-        const url = `http://localhost:8000/api/v1/contact/customer/${customerId}?page=${page}&limit=6`;
-        const res = await fetch(url);
-        const json = await res.json();
+  // Build API URL theo customerId và currentPage
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+  const apiUrl = `${baseUrl}/contact/customer/${customerId}?page=${currentPage}&limit=6`;
 
-        if (json.statusCode === 200) {
-          setContacts(json.data.contacts);
-          setCurrentPage(json.data.currentPage);
-          setTotalItems(json.data.totalItems);
-        } else {
-          message.error(json.message || "Lỗi tải liên hệ");
-        }
-      } catch {
-        message.error("Lỗi kết nối API");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [customerId]
-  );
+  // Sử dụng SWR với refreshInterval 10s, không tự revalidate khi focus
+  const { data, error, isValidating, mutate } = useSWR<{
+    statusCode: number;
+    message?: string;
+    data: {
+      contacts: Contact[];
+      currentPage: number;
+      totalItems: number;
+    };
+  }>(apiUrl, fetcher, {
+    refreshInterval: 10000,
+    revalidateOnFocus: false,
+    dedupingInterval: 5000,
+  });
 
-  useEffect(() => {
-    if (customerId) fetchContacts(currentPage);
-  }, [fetchContacts, currentPage, customerId]);
+  const loading = !data && !error;
 
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-  };
-
+  // Xử lý delete
   const handleDelete = async (id: string) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/contact/${id}`, {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+      const res = await fetch(`${baseUrl}/contact/${id}`, {
         method: "DELETE",
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.message || "Xóa thất bại");
       message.success("Xóa liên hệ thành công");
-      fetchContacts(currentPage);
+      mutate(); // gọi revalidate lại dữ liệu sau khi xóa
     } catch (error: any) {
       message.error(error.message);
     }
   };
 
+  // Xử lý submit form (create/update)
   const handleSubmit = async (values: Contact) => {
     const isUpdate = modalMode === "update";
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+
     const url = isUpdate
-      ? `http://localhost:8000/api/v1/contact/${selectedContact?.id}`
-      : `http://localhost:8000/api/v1/contact`;
+      ? `${baseUrl}/contact/${selectedContact?.id}`
+      : `${baseUrl}/contact`;
+
     const method = isUpdate ? "PUT" : "POST";
 
     try {
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...values, customerId }),
+        body: JSON.stringify(values),
       });
       const result = await res.json();
 
@@ -98,7 +93,7 @@ export default function ContactTable({ customerId }: ContactTableProps) {
         );
         setModalMode(null);
         setSelectedContact(null);
-        fetchContacts(currentPage);
+        mutate(); // revalidate lại dữ liệu sau khi tạo hoặc cập nhật
       } else {
         message.error(result.message || "Thao tác thất bại");
       }
@@ -107,30 +102,47 @@ export default function ContactTable({ customerId }: ContactTableProps) {
     }
   };
 
+  // Cột cho bảng
+  const sharedHeaderCellProps = { className: cx("headerCell") };
+  const sharedCellProps = { className: cx("cell") };
+
   const columns: ColumnsType<Contact> = [
     {
       title: "Tên",
       dataIndex: "name",
       key: "name",
+      className: cx("col-name"),
+      onHeaderCell: () => sharedHeaderCellProps,
+      onCell: () => sharedCellProps,
     },
     {
       title: "Email",
       dataIndex: "email",
       key: "email",
+      className: cx("col-email"),
+      onHeaderCell: () => sharedHeaderCellProps,
+      onCell: () => sharedCellProps,
     },
     {
       title: "Chức vụ",
       dataIndex: "position",
       key: "position",
+      className: cx("col-position"),
+      onHeaderCell: () => sharedHeaderCellProps,
+      onCell: () => sharedCellProps,
     },
     {
       title: "Ghi chú",
       dataIndex: "note",
       key: "note",
+      className: cx("col-note"),
+      onHeaderCell: () => sharedHeaderCellProps,
+      onCell: () => sharedCellProps,
     },
     {
       title: "Hành động",
       key: "action",
+      className: cx("col-action"),
       render: (_, record) => (
         <div className={cx("actionButtons")}>
           <ActionButton
@@ -158,12 +170,14 @@ export default function ContactTable({ customerId }: ContactTableProps) {
           />
         </div>
       ),
+      onHeaderCell: () => sharedHeaderCellProps,
+      onCell: () => sharedCellProps,
     },
   ];
 
   return (
     <div className={cx("wrapper")}>
-      {loading ? (
+      {loading || isValidating ? (
         <LoadingTab />
       ) : (
         <div className={cx("tableContainer")}>
@@ -174,20 +188,12 @@ export default function ContactTable({ customerId }: ContactTableProps) {
             >
               Thêm liên hệ
             </button>
-            {/* <Input.Search
-              placeholder="Tìm kiếm theo tên, email..."
-              allowClear
-              enterButton="Tìm"
-              size="middle"
-              style={{ width: 300 }}
-              onSearch={handleSearch}
-            /> */}
           </div>
 
           <Table
             className={cx("table")}
             columns={columns}
-            dataSource={contacts}
+            dataSource={data?.data.contacts || []}
             rowKey="id"
             pagination={false}
             scroll={{ x: "max-content" }}
@@ -197,15 +203,15 @@ export default function ContactTable({ customerId }: ContactTableProps) {
             <Pagination
               current={currentPage}
               pageSize={6}
-              total={totalItems}
+              total={data?.data.totalItems || 0}
               showSizeChanger={false}
-              onChange={handlePageChange}
+              onChange={(page) => setCurrentPage(page)}
             />
           </div>
         </div>
       )}
 
-      {/* <ContactForm
+      <ContactForm
         visible={modalMode !== null}
         customerId={customerId}
         onCancel={() => {
@@ -213,7 +219,8 @@ export default function ContactTable({ customerId }: ContactTableProps) {
           setSelectedContact(null);
         }}
         onSubmit={handleSubmit}
-      /> */}
+        initialValues={selectedContact}
+      />
     </div>
   );
 }

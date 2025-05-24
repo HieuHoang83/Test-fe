@@ -71,10 +71,14 @@ const UserUpdateForm: React.FC<UserFormProps> = ({
         >
           <Input />
         </Form.Item>
-        <Form.Item label="Số điện thoại" name="phone">
+        <Form.Item
+          label="Số điện thoại"
+          name="phone"
+          rules={[{ required: true }]}
+        >
           <Input />
         </Form.Item>
-        <Form.Item label="Công ty" name="company">
+        <Form.Item label="Công ty" name="company" rules={[{ required: true }]}>
           <Input />
         </Form.Item>
       </Form>

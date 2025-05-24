@@ -1,95 +1,67 @@
-import React, { useEffect } from "react";
-import { Modal, Form, Input, message } from "antd";
+import { Contact } from "@/interface/InterfaceContact";
+import { Form, Input, Modal } from "antd";
+import { useEffect } from "react";
 
-type ContactFormProps = {
+interface ContactFormProps {
   visible: boolean;
+  customerId: string;
   onCancel: () => void;
-  customerId: string; // truyền từ ngoài vào
-  onSubmit: (values: {
-    name: string;
-    email: string;
-    note: string;
-    position: string;
-    customerId: string;
-  }) => void;
-};
+  onSubmit: (values: Contact) => void;
+  initialValues?: Contact | null;
+}
 
-const ContactForm: React.FC<ContactFormProps> = ({
+export default function ContactForm({
   visible,
-  onCancel,
   customerId,
+  onCancel,
   onSubmit,
-}) => {
+  initialValues,
+}: ContactFormProps) {
   const [form] = Form.useForm();
 
   useEffect(() => {
-    form.resetFields(); // reset mỗi lần mở form
-  }, [visible, form]);
-
-  const handleSubmit = async () => {
-    try {
-      const values = await form.validateFields();
-
-      const submitValues = {
-        ...values,
-        customerId,
-      };
-
-      await onSubmit(submitValues);
-      message.success("Gửi thông tin liên hệ thành công");
-      form.resetFields();
-      onCancel();
-    } catch (error) {
-      message.error("Vui lòng kiểm tra lại thông tin");
+    if (visible) {
+      form.resetFields(); // reset trước để tránh bị đè
+      if (initialValues) {
+        form.setFieldsValue(initialValues);
+      }
     }
+  }, [visible, initialValues, form]);
+
+  const handleFinish = (values: Contact) => {
+    const payload = { ...values, customerId };
+    onSubmit(payload);
   };
 
   return (
     <Modal
       open={visible}
-      title="Thêm liên hệ mới"
       onCancel={onCancel}
-      onOk={handleSubmit}
-      okText="Gửi"
+      onOk={() => form.submit()}
+      title={initialValues ? "Chỉnh sửa liên hệ" : "Thêm liên hệ"}
+      okText={initialValues ? "Cập nhật" : "Thêm"}
       cancelText="Hủy"
+      destroyOnClose
+      centered
     >
-      <Form form={form} layout="vertical">
-        <Form.Item
-          label="Tên người liên hệ"
-          name="name"
-          rules={[{ required: true, message: "Vui lòng nhập tên" }]}
-        >
-          <Input placeholder="Nguyễn Văn C" />
+      <Form form={form} layout="vertical" onFinish={handleFinish}>
+        <Form.Item name="name" label="Tên" rules={[{ required: true }]}>
+          <Input />
         </Form.Item>
-
         <Form.Item
-          label="Email"
           name="email"
-          rules={[
-            { required: true, type: "email", message: "Email không hợp lệ" },
-          ]}
+          label="Email"
+          rules={[{ required: true, type: "email" }]}
         >
-          <Input placeholder="nguyenvanc@example.com" />
+          <Input />
         </Form.Item>
-
-        <Form.Item
-          label="Chức vụ"
-          name="position"
-          rules={[{ required: true, message: "Vui lòng nhập chức vụ" }]}
-        >
-          <Input placeholder="Trưởng phòng kinh doanh" />
+        <Form.Item name="position" label="Chức vụ" rules={[{ required: true }]}>
+          <Input />
         </Form.Item>
-
-        <Form.Item
-          label="Ghi chú"
-          name="note"
-          rules={[{ required: true, message: "Vui lòng nhập ghi chú" }]}
-        >
-          <Input.TextArea placeholder="Liên hệ phụ trách hợp đồng năm 2025" />
+        <Form.Item name="note" label="Ghi chú">
+          <Input.TextArea rows={3} />
         </Form.Item>
       </Form>
     </Modal>
   );
-};
-
-export default ContactForm;
+}

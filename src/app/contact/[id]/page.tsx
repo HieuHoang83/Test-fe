@@ -7,7 +7,10 @@ const cx = classNames.bind(styles);
 interface ContactPageProps {
   params: { id: string };
 }
-
+export const metadata = {
+  title: "Contact",
+  description: "Quản lý liên lạc của khách hàng",
+};
 export default function ContactPage({ params }: ContactPageProps) {
   const decoded = base64UrlDecode(params.id);
   const [id, name] = decoded.split(":");
